@@ -173,6 +173,9 @@ cython_debug/
 # data files
 realtime_data/*
 static_data/*
+# exception to keep folders
+!realtime_data/.gitkeep 
+!static_data/.gitkeep 
 # notebook draft files
 notebook/*
 .DS_Store
