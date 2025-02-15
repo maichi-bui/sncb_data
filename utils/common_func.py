@@ -4,8 +4,15 @@ import zipfile
 import os
 import shutil
 import datetime
-
+import logging
 from google.transit import gtfs_realtime_pb2
+
+# Configure logging
+logging.basicConfig(
+    filename="output.log",  # Log file name
+    level=logging.INFO,  # Log level (INFO, DEBUG, ERROR, etc.)
+    format="%(asctime)s - %(levelname)s - %(message)s"  # Log format
+)
 
 def parse_raw_static_data(raw_folder, processed_folder):
     os.makedirs(processed_folder, exist_ok=True)
@@ -19,7 +26,7 @@ def parse_raw_static_data(raw_folder, processed_folder):
     try:
         assert sum(service_time.exception_type!=1) == 0
     except:
-        print('Error: exception_type should be all 1')
+        logging.error('Error: exception_type should be all 1')
     service_time['date'] = pd.to_datetime(service_time['date'], format='%Y%m%d', errors='coerce').dt.date
     service_time = service_time[service_time['date'] <=  datetime.date(2025,2,17)][['service_id','date']]
     service_time.to_csv(f'{processed_folder}/calendar_dates.csv', index=False)
@@ -58,22 +65,22 @@ def download_static_files(url, folder_name):
         with open(zip_filename, "wb") as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
-        print(f"Download complete: {zip_filename}")
+        logging.info(f"Download complete: {zip_filename}")
                 
         # Step 2: Extract the ZIP file
         os.makedirs(folder_name, exist_ok=True)  # Ensure target folder exists
         with zipfile.ZipFile(zip_filename, "r") as zip_ref:
             zip_ref.extractall(folder_name)
-        print(f"Extraction complete: Files saved in '{folder_name}'")
+        logging.info(f"Extraction complete: Files saved in '{folder_name}'")
 
         # Step 3: Process the extracted files
         parse_raw_static_data(folder_name, folder_name.replace('raw_data', 'processed_data'))
-        
+        logging.info(f"Process complete: Files saved in '{folder_name.replace('raw_data', 'processed_data')}'")
         # Step 4: Delete the extracted file after extraction
         shutil.rmtree(folder_name)
-        print(f"Deleted extracted file: {folder_name}")
+        logging.info(f"Deleted extracted file: {folder_name}")
     else:
-        print(f"Failed to download file. Status code: {response.status_code}")
+        logging.error(f"Failed to download file. Status code: {response.status_code}")
 
     return
 
@@ -116,12 +123,13 @@ def parse_raw_rt_data(file_path):
     
                 structured_data.append(stop_data)
     
-    # Convert to DataFrame
     df = pd.DataFrame(structured_data)
-    
     # Convert Unix timestamps to human-readable format
-    df['departure_time'] = pd.to_datetime(df['departure_time'], unit='s', errors='coerce')
-    df['arrival_time'] = pd.to_datetime(df['arrival_time'], unit='s', errors='coerce')
+    try:
+        df['departure_time'] = pd.to_datetime(df['departure_time'], unit='s', errors='coerce')
+        df['arrival_time'] = pd.to_datetime(df['arrival_time'], unit='s', errors='coerce')
+    except:
+        logging.error('Error: Unable to convert unix timestamps to human-readable format')
     return df
 
 def download_rt_files(url, raw_file):
@@ -130,9 +138,11 @@ def download_rt_files(url, raw_file):
         with open(raw_file, "wb") as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
-        print(f"Download complete: {raw_file}")
+        logging.info(f"Download complete: {raw_file}")
         df = parse_raw_rt_data(raw_file)
         output_file = (raw_file + '.csv').replace('raw_data', 'processed_data')
         df.to_csv(output_file, index=False)
-        
+        logging.info(f"Process complete: {output_file}")
+    else:
+        logging.error(f"Failed to download file. Status code: {response.status_code}")
     return

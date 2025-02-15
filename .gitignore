@@ -183,3 +183,4 @@ static_data/processed_data/*
 # notebook draft files
 notebook/*
 .DS_Store
+.log
