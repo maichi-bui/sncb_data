@@ -2,8 +2,53 @@ import requests
 import pandas as pd
 import zipfile
 import os
+import shutil
+import datetime
 
 from google.transit import gtfs_realtime_pb2
+
+def parse_raw_static_data(raw_folder, processed_folder):
+    os.makedirs(processed_folder, exist_ok=True)
+    # Step 1: Filter routes.txt files
+    routes = pd.read_csv(f'{raw_folder}/routes.txt')
+    routes = routes[routes['route_short_name']!='BUS']
+    routes.to_csv(f'{processed_folder}/routes.csv', index=False)
+    
+    # Step 2: Filter dates from today-7 days later
+    service_time = pd.read_csv(f'{raw_folder}/calendar_dates.txt', dtype={"service_id": str})
+    try:
+        assert sum(service_time.exception_type!=1) == 0
+    except:
+        print('Error: exception_type should be all 1')
+    service_time['date'] = pd.to_datetime(service_time['date'], format='%Y%m%d', errors='coerce').dt.date
+    service_time = service_time[service_time['date'] <=  datetime.date(2025,2,17)][['service_id','date']]
+    service_time.to_csv(f'{processed_folder}/calendar_dates.csv', index=False)
+
+    # Step 3: Filter trips.txt
+    trips = pd.read_csv(f'{raw_folder}/trips.txt', dtype={"service_id": str})
+    trips = trips[trips.route_id.isin(set(routes.route_id))] # filter by route_id
+    trips = trips[trips.service_id.isin(set(service_time.service_id))] # filter by service_id
+    trips.to_csv(f'{processed_folder}/trips.csv', index=False)
+
+    # Step 4: Filter stop_times.txt
+    stop_times = pd.read_csv(f'{raw_folder}/stop_times.txt')
+    stop_times = stop_times[stop_times.trip_id.isin(set(trips.trip_id))] # filter by trip_id
+    stop_times.to_csv(f'{processed_folder}/stop_times.csv', index=False)
+
+    # Step 5: Filter stops_overrides.txt
+    stop_time_overrides = pd.read_csv(f'{raw_folder}/stop_time_overrides.txt', dtype={"service_id": str})
+    stop_time_overrides = stop_time_overrides[stop_time_overrides.trip_id.isin(set(trips.trip_id))]
+    stop_time_overrides = stop_time_overrides[stop_time_overrides.service_id.isin(set(service_time.service_id))]
+    stop_time_overrides['platform'] = stop_time_overrides['stop_id'].apply(lambda x: x.split('_')[1])
+    stop_time_overrides['stop_id'] = stop_time_overrides['stop_id'].apply(lambda x: int(x.split('_')[0]))
+    stop_time_overrides.to_csv(f'{processed_folder}/stop_time_overrides.csv', index=False)
+
+    # Step 6: Duplicate for other files
+    stops = pd.read_csv(f'{raw_folder}/stops.txt')
+    stops.to_csv(f'{processed_folder}/stops.csv', index=False)
+    transfers = pd.read_csv(f'{raw_folder}/transfers.txt')
+    transfers.to_csv(f'{processed_folder}/transfers.csv', index=False)
+    return
 
 def download_static_files(url, folder_name):
     zip_filename = f'{folder_name}.zip'
@@ -20,9 +65,13 @@ def download_static_files(url, folder_name):
         with zipfile.ZipFile(zip_filename, "r") as zip_ref:
             zip_ref.extractall(folder_name)
         print(f"Extraction complete: Files saved in '{folder_name}'")
-        # Step 3: Delete the ZIP file after extraction
-        os.remove(zip_filename)
-        print(f"Deleted ZIP file: {zip_filename}")
+
+        # Step 3: Process the extracted files
+        parse_raw_static_data(folder_name, folder_name.replace('raw_data', 'processed_data'))
+        
+        # Step 4: Delete the extracted file after extraction
+        shutil.rmtree(folder_name)
+        print(f"Deleted extracted file: {folder_name}")
     else:
         print(f"Failed to download file. Status code: {response.status_code}")
 
@@ -70,7 +119,7 @@ def parse_raw_rt_data(file_path):
     # Convert to DataFrame
     df = pd.DataFrame(structured_data)
     
-    # Convert Unix timestamps to human-readable format (optional)
+    # Convert Unix timestamps to human-readable format
     df['departure_time'] = pd.to_datetime(df['departure_time'], unit='s', errors='coerce')
     df['arrival_time'] = pd.to_datetime(df['arrival_time'], unit='s', errors='coerce')
     return df
@@ -83,7 +132,7 @@ def download_rt_files(url, raw_file):
                 f.write(chunk)
         print(f"Download complete: {raw_file}")
         df = parse_raw_rt_data(raw_file)
-        output_file = raw_file + '.csv'
+        output_file = (raw_file + '.csv').replace('raw_data', 'processed_data')
         df.to_csv(output_file, index=False)
         
     return
