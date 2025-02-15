@@ -171,10 +171,10 @@ cython_debug/
 .pypirc
 
 # data files
-realtime_data/processed_data*
-realtime_data/raw_data*
-static_data/raw_data*
-static_data/processed_data*
+realtime_data/processed_data/*
+realtime_data/raw_data/*
+static_data/raw_data/*
+static_data/processed_data/*
 # exception to keep folders
 !static_data/processed_data/.gitkeep
 !static_data/raw_data/.gitkeep 
