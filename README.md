@@ -5,5 +5,6 @@ Retrieving SNCB train/bus timetables
     python -m venv venv
     source venv/bin/activate
     pip install -r requirements.txt
-    python main.py
+    python main.py --data_type "real_time"
+    python main.py --data_type "static"
 ```
